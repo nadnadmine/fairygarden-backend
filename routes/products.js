@@ -1,110 +1,140 @@
 const express = require('express');
-const { Product, ProductImage } = require('../models');
-const { auth, adminOnly } = require('../middleware/auth');
-const upload = require('../middleware/upload'); // Import multer
 const router = express.Router();
+const { Product, Category } = require('../models');
+const authMiddleware = require('../middleware/auth');
 const { Op } = require('sequelize');
 
-// Public: Get Products
+// ==========================================
+// 1. GET ALL PRODUCTS (PUBLIC)
+// ==========================================
 router.get('/', async (req, res) => {
-  const { category_id, is_active, search, sort, limit } = req.query;
-  const where = {};
-  
-  // 1. Fitur Search (Pencarian Nama) - Sesuai Icon Kaca Pembesar
-  if (search) {
-      where.product_name = { [Op.iLike]: `%${search}%` }; // iLike = case insensitive (Postgres)
-  }
+    try {
+        const { search, category } = req.query;
+        let whereClause = {};
 
-  // 2. Filter Kategori
-  if (category_id) where.category_id = category_id;
-  
-  // 3. Filter Aktif/Tidak
-  if (is_active !== undefined) where.is_active = is_active === 'true';
+        // Filter by Search Name
+        if (search) {
+            whereClause.product_name = { [Op.iLike]: `%${search}%` };
+        }
 
-  // 4. Sorting Logic
-  let order = [['created_at', 'DESC']]; // Default: Terbaru
+        // Filter by Category
+        if (category) {
+            // Jika butuh filter kategori by ID, tambahkan logika di sini
+            // Tapi biasanya filter kategori dilakukan di Frontend atau join tabel
+        }
 
-  // Sesuai Desain "SORT BY" (Highest Price)
-  if (sort === 'price_desc') order = [['price', 'DESC']];
-  if (sort === 'price_asc') order = [['price', 'ASC']];
-  
-  // Sesuai Desain Home "Most Popular" (Sort by Sold)
-  if (sort === 'popular') order = [['sold', 'DESC']];
-
-  try {
-    // Limit query (misal cuma mau tampilkan 4 produk populer di Home)
-    const queryOptions = {
-        where,
-        include: [{ model: ProductImage }],
-        order: order
-    };
-
-    if (limit) queryOptions.limit = parseInt(limit);
-
-    const products = await Product.findAll(queryOptions);
-    res.json(products);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/:id', async (req, res) => {
-  try {
-    const product = await Product.findByPk(req.params.id, { include: ProductImage });
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Admin: Create Product + Upload Image
-router.post('/', auth, adminOnly, upload.single('image'), async (req, res) => {
-  const { category_id, product_name, description, price, stock } = req.body;
-  const imageFile = req.file; // File dari multer
-
-  try {
-    // 1. Buat Produk
-    const product = await Product.create({ 
-        category_id, product_name, description, price, stock, 
-        image_url: imageFile ? imageFile.filename : null // Simpan nama file utama
-    });
-
-    // 2. Simpan ke tabel ProductImage juga (opsional, untuk galeri)
-    if (imageFile) {
-        await ProductImage.create({
-            product_id: product.product_id,
-            url: imageFile.filename,
-            is_primary: true
+        const products = await Product.findAll({
+            where: whereClause,
+            include: [{ model: Category, attributes: ['category_name'] }],
+            order: [['created_at', 'DESC']]
         });
+
+        res.json(products);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Gagal mengambil data produk.' });
     }
-
-    res.status(201).json(product);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
 });
 
-// Admin: Update
-router.put('/:id', auth, adminOnly, async (req, res) => {
-  try {
-    const product = await Product.findByPk(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Not found' });
-    await product.update(req.body);
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// ==========================================
+// 2. GET PRODUCT DETAIL (PUBLIC)
+// ==========================================
+router.get('/:id', async (req, res) => {
+    try {
+        const product = await Product.findByPk(req.params.id, {
+            include: [{ model: Category }]
+        });
+
+        if (!product) return res.status(404).json({ error: 'Produk tidak ditemukan.' });
+
+        res.json(product);
+    } catch (err) {
+        res.status(500).json({ error: 'Error mengambil detail produk.' });
+    }
 });
 
-// Admin: Delete
-router.delete('/:id', auth, adminOnly, async (req, res) => {
-  try {
-    await Product.destroy({ where: { product_id: req.params.id } });
-    res.json({ message: 'Product deleted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// ==========================================
+// 3. CREATE PRODUCT (ADMIN ONLY)
+// ==========================================
+// Middleware upload dihapus, ganti jadi input URL
+router.post('/', authMiddleware, async (req, res) => {
+    try {
+        // Cek apakah user adalah Admin
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Akses ditolak. Khusus Admin.' });
+        }
+
+        const { product_name, description, price, stock, category_id, image_url } = req.body;
+
+        const newProduct = await Product.create({
+            product_name,
+            description,
+            price,
+            stock,
+            category_id,
+            image_url, // Ambil link gambar dari input text
+            sold: 0
+        });
+
+        res.status(201).json({ message: 'Produk berhasil ditambahkan!', product: newProduct });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Gagal menambah produk.' });
+    }
+});
+
+// ==========================================
+// 4. UPDATE PRODUCT (ADMIN ONLY)
+// ==========================================
+router.put('/:id', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Akses ditolak.' });
+        }
+
+        const { product_name, description, price, stock, category_id, image_url } = req.body;
+        const product = await Product.findByPk(req.params.id);
+
+        if (!product) return res.status(404).json({ error: 'Produk tidak ditemukan.' });
+
+        // Update Field
+        product.product_name = product_name || product.product_name;
+        product.description = description || product.description;
+        product.price = price || product.price;
+        product.stock = stock || product.stock;
+        product.category_id = category_id || product.category_id;
+        
+        // Update Gambar jika ada link baru
+        if (image_url) {
+            product.image_url = image_url;
+        }
+
+        await product.save();
+        res.json({ message: 'Produk berhasil diupdate!', product });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Gagal update produk.' });
+    }
+});
+
+// ==========================================
+// 5. DELETE PRODUCT (ADMIN ONLY)
+// ==========================================
+router.delete('/:id', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Akses ditolak.' });
+        }
+
+        const product = await Product.findByPk(req.params.id);
+        if (!product) return res.status(404).json({ error: 'Produk tidak ditemukan.' });
+
+        await product.destroy();
+        res.json({ message: 'Produk berhasil dihapus.' });
+    } catch (err) {
+        res.status(500).json({ error: 'Gagal menghapus produk.' });
+    }
 });
 
 module.exports = router;
