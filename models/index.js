@@ -5,38 +5,48 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // ====================================================
-// SETUP KONEKSI DATABASE (FIX VERCEL + NEON)
+// SETUP KONEKSI DATABASE (FIX LOCALHOST vs VERCEL)
 // ====================================================
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+
+// Cek apakah kita sedang di mode Production (Vercel)
+const isProduction = process.env.NODE_ENV === 'production';
+
+const sequelizeConfig = {
   dialect: 'postgres',
   logging: false,
-  // PENTING: Baris ini wajib untuk Vercel agar driver pg terbaca
-  dialectModule: require('pg'), 
-  dialectOptions: {
+  dialectModule: require('pg'), // Wajib buat Vercel
+};
+
+// HANYA Tambahkan SSL jika sedang di Production (Vercel/Neon)
+if (isProduction) {
+  sequelizeConfig.dialectOptions = {
     ssl: {
-      require: true, // Wajib untuk Neon
-      rejectUnauthorized: false // Mencegah error sertifikat
+      require: true,
+      rejectUnauthorized: false
     }
-  }
-});
+  };
+}
+
+const sequelize = new Sequelize(process.env.DATABASE_URL, sequelizeConfig);
 
 // ====================================================
-// IMPORT MODEL
+// IMPORT MODEL (FIX: Tambah Sequelize.DataTypes)
 // ====================================================
-// Kita memanggil file per file, BUKAN memanggil './models'
-const User = require('./User')(sequelize);
-const Admin = require('./Admin')(sequelize);
-const Address = require('./Address')(sequelize);
-const Category = require('./Category')(sequelize);
-const Product = require('./Product')(sequelize);
-const Cart = require('./Cart')(sequelize);
-const CartItem = require('./CartItem')(sequelize);
-const Order = require('./Order')(sequelize);
-const OrderItem = require('./OrderItem')(sequelize);
-const Payment = require('./Payment')(sequelize);
-const ProductImage = require('./ProductImage')(sequelize);
-const ActivityLog = require('./ActivityLog')(sequelize);
-const OrderStatusHistory = require('./OrderStatusHistory')(sequelize);
+// Kita harus passing 'Sequelize.DataTypes' agar model bisa baca INTEGER, STRING, dll.
+
+const User = require('./User')(sequelize, Sequelize.DataTypes);
+const Admin = require('./Admin')(sequelize, Sequelize.DataTypes);
+const Address = require('./Address')(sequelize, Sequelize.DataTypes);
+const Category = require('./Category')(sequelize, Sequelize.DataTypes);
+const Product = require('./Product')(sequelize, Sequelize.DataTypes);
+const Cart = require('./Cart')(sequelize, Sequelize.DataTypes);
+const CartItem = require('./CartItem')(sequelize, Sequelize.DataTypes);
+const Order = require('./Order')(sequelize, Sequelize.DataTypes);
+const OrderItem = require('./OrderItem')(sequelize, Sequelize.DataTypes);
+const Payment = require('./Payment')(sequelize, Sequelize.DataTypes);
+const ProductImage = require('./ProductImage')(sequelize, Sequelize.DataTypes);
+const ActivityLog = require('./ActivityLog')(sequelize, Sequelize.DataTypes);
+const OrderStatusHistory = require('./OrderStatusHistory')(sequelize, Sequelize.DataTypes);
 
 // ====================================================
 // DEFINISI RELASI (ASSOCIATIONS)
@@ -65,8 +75,9 @@ User.hasMany(Order, { foreignKey: 'user_id' });
 Order.belongsTo(User, { foreignKey: 'user_id' });
 
 // 6. Order & Address
-Address.hasMany(Order, { foreignKey: 'address_id' });
-Order.belongsTo(Address, { foreignKey: 'address_id' });
+// (Kita disable dulu relasi Address-Order karena di sistem baru alamat nempel di Order)
+// Address.hasMany(Order, { foreignKey: 'address_id' });
+// Order.belongsTo(Address, { foreignKey: 'address_id' });
 
 // 7. Order & Items & Product
 Order.hasMany(OrderItem, { foreignKey: 'order_id' });
@@ -92,20 +103,9 @@ OrderStatusHistory.belongsTo(Order, { foreignKey: 'order_id' });
 Admin.hasMany(OrderStatusHistory, { foreignKey: 'changed_by_admin' });
 OrderStatusHistory.belongsTo(Admin, { foreignKey: 'changed_by_admin' });
 
-// Export semua model dan instance sequelize
+// Export
 module.exports = { 
   sequelize, 
-  User, 
-  Admin, 
-  Address, 
-  Category, 
-  Product, 
-  Cart, 
-  CartItem, 
-  Order, 
-  OrderItem, 
-  Payment, 
-  ProductImage, 
-  ActivityLog, 
-  OrderStatusHistory 
+  User, Admin, Address, Category, Product, Cart, CartItem, 
+  Order, OrderItem, Payment, ProductImage, ActivityLog, OrderStatusHistory 
 };
