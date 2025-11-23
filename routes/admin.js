@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Order, User, Product, OrderItem } = require('../models');
+const { Order, User, Product, OrderItem, Category } = require('../models');
 const authMiddleware = require('../middleware/auth'); 
-// Middleware upload dihapus karena Admin tidak upload gambar di sini
 
 // ==========================================
 // 1. GET DASHBOARD STATS (ADMIN)
@@ -15,21 +14,14 @@ router.get('/stats', authMiddleware, async (req, res) => {
         const totalUsers = await User.count({ where: { role: 'customer' } });
         const totalProducts = await Product.count();
         
-        // Hitung Pendapatan (Total Price dari order yang statusnya tidak 'BATAL')
         const orders = await Order.findAll();
         let revenue = 0;
         orders.forEach(o => {
-            revenue += parseFloat(o.total_price || 0);
+            if (o.status !== 'BATAL') revenue += parseFloat(o.total_price || 0);
         });
 
-        res.json({
-            totalOrders,
-            totalUsers,
-            totalProducts,
-            revenue
-        });
+        res.json({ totalOrders, totalUsers, totalProducts, revenue });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: "Gagal ambil stats" });
     }
 });
@@ -48,7 +40,6 @@ router.get('/orders', authMiddleware, async (req, res) => {
             ],
             order: [['created_at', 'DESC']]
         });
-
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: "Gagal ambil data order" });
@@ -56,23 +47,36 @@ router.get('/orders', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 3. UPDATE ORDER STATUS (ADMIN)
+// 3. GET ALL CUSTOMERS (ADMIN) - FITUR BARU!
+// ==========================================
+router.get('/users', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Akses ditolak" });
+
+        const users = await User.findAll({
+            where: { role: 'customer' },
+            attributes: ['user_id', 'first_name', 'last_name', 'email', 'phone', 'created_at'],
+            order: [['created_at', 'DESC']]
+        });
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ error: "Gagal ambil data user" });
+    }
+});
+
+// ==========================================
+// 4. UPDATE ORDER STATUS (ADMIN)
 // ==========================================
 router.put('/orders/:id', authMiddleware, async (req, res) => {
     try {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Akses ditolak" });
-
-        const { status, payment_status } = req.body;
+        const { status } = req.body;
         const order = await Order.findByPk(req.params.id);
-
         if (!order) return res.status(404).json({ error: "Order tidak ditemukan" });
-
-        if (status) order.status = status;
-        if (payment_status) order.payment_status = payment_status;
-
+        
+        order.status = status;
         await order.save();
-        res.json({ message: "Status order diperbarui", order });
-
+        res.json({ message: "Status diperbarui", order });
     } catch (err) {
         res.status(500).json({ error: "Gagal update order" });
     }
