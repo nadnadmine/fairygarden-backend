@@ -1,185 +1,99 @@
 const express = require('express');
-const { sequelize, Order, OrderItem, Cart, CartItem, Product, Address, Payment, OrderStatusHistory } = require('../models');
-const { auth, adminOnly } = require('../middleware/auth');
-const upload = require('../middleware/upload');
 const router = express.Router();
+const { Order, OrderItem, Cart, CartItem, Product } = require('../models');
+const authMiddleware = require('../middleware/auth');
+const upload = require('../middleware/upload'); // Middleware upload gambar
 
-// Get User Orders
-router.get('/', auth, async (req, res) => {
-  try {
-    const orders = await Order.findAll({ 
-        where: { user_id: req.user.id }, 
-        include: [OrderItem, Payment], 
-        order: [['created_at', 'DESC']]
-    });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// CHECKOUT (POST /api/orders/checkout)
+router.post('/checkout', authMiddleware, upload.single('proofOfPayment'), async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const file = req.file;
 
-// Get Detail Order
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const order = await Order.findByPk(req.params.id, { include: [OrderItem, Payment] });
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    
-    if (order.user_id !== req.user.id && req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Forbidden' });
-    }
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+        // 1. Ambil data dari Body (Dikirim oleh Front-End)
+        const {
+            recipient_name, recipient_phone, sender_phone,
+            address_line, province, postal_code,
+            delivery_date, delivery_time, message_card,
+            delivery_type // 'Delivery' atau 'Pick Up'
+        } = req.body;
 
-// Checkout (Create Order + Upload Bukti Bayar)
-router.post('/checkout', auth, upload.single('proofOfPayment'), async (req, res) => {
-  const t = await sequelize.transaction(); // Mulai transaksi
-  
-  try {
-    const { address_id } = req.body;
-    const proofFile = req.file;
+        if (!file) return res.status(400).json({ error: "Wajib upload bukti transfer!" });
 
-    // 1. Ambil Data Cart
-    const cart = await Cart.findOne({ 
-        where: { user_id: req.user.id }, 
-        include: [{ model: CartItem, include: Product }] 
-    });
+        // 2. Ambil Keranjang User
+        const cart = await Cart.findOne({
+            where: { user_id: userId },
+            include: [{ model: CartItem, include: [Product] }]
+        });
 
-    if (!cart || cart.CartItems.length === 0) {
-        await t.rollback();
-        return res.status(400).json({ error: 'Cart is empty' });
-    }
-
-    // 2. Ambil Alamat
-    const address = await Address.findByPk(address_id);
-    if (!address) {
-        await t.rollback();
-        return res.status(404).json({ error: 'Address not found' });
-    }
-
-    // 3. Proses Items (Satu Loop Saja!)
-    let itemsTotal = 0;
-    const orderItemsData = [];
-
-    for (const item of cart.CartItems) {
-        // Cek Stok
-        if (item.Product.stock < item.quantity) {
-            throw new Error(`Stok ${item.Product.product_name} tidak cukup.`);
+        if (!cart || cart.CartItems.length === 0) {
+            return res.status(400).json({ error: "Keranjang kosong" });
         }
 
-        // Kurangi Stok
-        await item.Product.update({ stock: item.Product.stock - item.quantity }, { transaction: t });
-        
-        // Tambah Sold Counter
-        await item.Product.increment('sold', { by: item.quantity, transaction: t });
-
-        // Hitung Harga
-        const itemPrice = parseFloat(item.Product.price); // Pastikan jadi angka
-        itemsTotal += item.quantity * itemPrice;
-        
-        // Debugging: Cek di terminal VS Code apakah harga muncul
-        console.log(`Processing: ${item.Product.product_name}, Price: ${itemPrice}`);
-
-        orderItemsData.push({
-            product_id: item.product_id,
-            product_name_snapshot: item.Product.product_name, 
-            quantity: item.quantity,
-            
-            // Pastikan field ini bernama 'price' sesuai model OrderItem.js
-            price: itemPrice, 
-            
-            delivery_option: item.delivery_option,
-            delivery_date: item.delivery_date,
-            delivery_time: item.delivery_time,
-            message_card: `From: ${item.message_card_from || '-'} | To: ${item.message_card_to || '-'} | Msg: ${item.message_card_text || '-'}`
+        // 3. Hitung Total
+        let itemsTotal = 0;
+        cart.CartItems.forEach(item => {
+            itemsTotal += parseFloat(item.Product.price) * item.quantity;
         });
-    }
-    
-    // 4. Buat Order Header
-    const deliveryFee = 15000;
-    const handlingFee = 1000;
-    const finalTotal = itemsTotal + deliveryFee + handlingFee;
 
-    const newOrder = await Order.create({
-      user_id: req.user.id,
-      address_id: address.address_id, 
-      
-      // Snapshot Alamat
-      shipping_recipient_name: address.recipient_name,
-      shipping_phone: address.recipient_phone,
-      shipping_address_line: address.address_line,
-      shipping_province: address.province,
-      shipping_postal_code: address.postal_code,
+        const deliveryFee = delivery_type === 'Pick Up' ? 0 : 25000;
+        const handlingFee = 1000;
+        const finalTotal = itemsTotal + deliveryFee + handlingFee;
 
-      total_price: finalTotal,
-      delivery_fee: deliveryFee,
-      handling_fee: handlingFee,
-      status: 'DIPROSES',
-      payment_status: proofFile ? 'Pending' : 'Pending',
-      payment_method: 'QRIS'
-    }, { transaction: t });
+        // 4. Buat Order Baru (Sesuai Desain PDF)
+        const newOrder = await Order.create({
+            user_id: userId,
+            recipient_name,
+            recipient_phone,
+            sender_phone: sender_phone || "-", 
+            address_line,
+            province: province || "DKI Jakarta",
+            postal_code: postal_code || "00000",
+            delivery_type: delivery_type || 'Delivery',
+            delivery_date: delivery_date || new Date(), // Default hari ini jika kosong
+            delivery_time: delivery_time || "09:00 - 15:00",
+            message_card: message_card || "-",
+            total_price: finalTotal,
+            delivery_fee: deliveryFee,
+            handling_fee: handlingFee,
+            proof_of_payment: file.filename, // Simpan nama file
+            status: 'DIPROSES',
+            payment_status: 'Paid' // Karena sudah upload bukti
+        });
 
-    // 5. Simpan Order Items
-    // Map ulang ID order ke data items
-    const itemsWithOrderId = orderItemsData.map(item => ({ ...item, order_id: newOrder.order_id }));
-    
-    // Bulk Create
-    await OrderItem.bulkCreate(itemsWithOrderId, { transaction: t });
-
-    // 6. Simpan Pembayaran
-    if (proofFile) {
-        await Payment.create({
+        // 5. Pindahkan Item Keranjang ke OrderItems
+        const orderItemsArray = cart.CartItems.map(item => ({
             order_id: newOrder.order_id,
-            amount: finalTotal,
-            method: 'QRIS',
-            status: 'Pending',
-            gateway_payment_ref: proofFile.filename
-        }, { transaction: t });
+            product_id: item.product_id,
+            product_name_snapshot: item.Product.product_name,
+            quantity: item.quantity,
+            price: item.Product.price
+        }));
+        await OrderItem.bulkCreate(orderItemsArray);
+
+        // 6. Kosongkan Keranjang
+        await CartItem.destroy({ where: { cart_id: cart.cart_id } });
+
+        res.status(201).json({ message: "Order berhasil dibuat!", order_id: newOrder.order_id });
+
+    } catch (error) {
+        console.error("Checkout Error:", error);
+        res.status(500).json({ error: "Gagal memproses order." });
     }
-
-    // 7. Hapus Keranjang
-    await CartItem.destroy({ where: { cart_id: cart.cart_id }, transaction: t });
-
-    await t.commit();
-    res.status(201).json({ message: 'Order created', order: newOrder });
-
-  } catch (err) {
-    await t.rollback();
-    console.error("Checkout Error:", err); // Lihat error lengkap di terminal
-    res.status(500).json({ error: err.message });
-  }
 });
 
-// --- TAMBAHAN: ADMIN UPDATE STATUS ---
-
-// Admin: Update Status Pesanan
-router.put('/:id/status', auth, adminOnly, async (req, res) => {
-  const { status, note } = req.body;
-  try {
-    const order = await Order.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    const prevStatus = order.status;
-    
-    // Update status (Pastikan uppercase agar sesuai ENUM database: 'DIPROSES', 'DIKIRIM', dll)
-    order.status = status.toUpperCase(); 
-    await order.save();
-
-    // Catat History Perubahan (Audit Log)
-    await OrderStatusHistory.create({
-      order_id: order.order_id,
-      prev_status: prevStatus,
-      new_status: order.status,
-      changed_by_admin: req.user.id,
-      note: note
-    });
-
-    res.json({ message: 'Order status updated successfully', order });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// GET HISTORY (GET /api/orders)
+router.get('/', authMiddleware, async (req, res) => {
+    try {
+        const orders = await Order.findAll({
+            where: { user_id: req.user.userId },
+            include: [OrderItem],
+            order: [['created_at', 'DESC']]
+        });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: "Gagal ambil data order" });
+    }
 });
 
 module.exports = router;
