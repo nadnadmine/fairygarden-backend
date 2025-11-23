@@ -4,14 +4,26 @@ const dotenv = require('dotenv');
 // Load env vars
 dotenv.config();
 
-// Setup koneksi
+// ====================================================
+// SETUP KONEKSI DATABASE (FIX VERCEL + NEON)
+// ====================================================
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: false
+  logging: false,
+  // PENTING: Baris ini wajib untuk Vercel agar driver pg terbaca
+  dialectModule: require('pg'), 
+  dialectOptions: {
+    ssl: {
+      require: true, // Wajib untuk Neon
+      rejectUnauthorized: false // Mencegah error sertifikat
+    }
+  }
 });
 
-// Import definisi model (Pastikan file-file ini ada di folder models)
-// Perhatikan: Kita memanggil file per file, BUKAN memanggil './models'
+// ====================================================
+// IMPORT MODEL
+// ====================================================
+// Kita memanggil file per file, BUKAN memanggil './models'
 const User = require('./User')(sequelize);
 const Admin = require('./Admin')(sequelize);
 const Address = require('./Address')(sequelize);
@@ -82,18 +94,18 @@ OrderStatusHistory.belongsTo(Admin, { foreignKey: 'changed_by_admin' });
 
 // Export semua model dan instance sequelize
 module.exports = { 
-    sequelize, 
-    User, 
-    Admin, 
-    Address, 
-    Category, 
-    Product, 
-    Cart, 
-    CartItem, 
-    Order, 
-    OrderItem, 
-    Payment, 
-    ProductImage, 
-    ActivityLog, 
-    OrderStatusHistory 
+  sequelize, 
+  User, 
+  Admin, 
+  Address, 
+  Category, 
+  Product, 
+  Cart, 
+  CartItem, 
+  Order, 
+  OrderItem, 
+  Payment, 
+  ProductImage, 
+  ActivityLog, 
+  OrderStatusHistory 
 };
