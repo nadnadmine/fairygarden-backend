@@ -78,7 +78,9 @@ router.post('/checkout', authMiddleware, async (req, res) => {
 
     } catch (error) {
         console.error("Checkout Error:", error);
-        res.status(500).json({ error: "Gagal memproses order." });
+        
+        // UBAH BARIS INI (Supaya kita tahu apa error aslinya):
+        res.status(500).json({ error: error.message }); 
     }
 });
 
@@ -91,8 +93,11 @@ router.get('/', authMiddleware, async (req, res) => {
             order: [['created_at', 'DESC']]
         });
         res.json(orders);
-    } catch (err) {
-        res.status(500).json({ error: "Gagal ambil data order" });
+    } catch (error) {
+        console.error("Checkout Error:", error);
+        
+        // UBAH BARIS INI (Supaya kita tahu apa error aslinya):
+        res.status(500).json({ error: error.message }); 
     }
 });
 
