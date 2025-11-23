@@ -2,16 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { Cart, CartItem, Product } = require('../models');
 const authMiddleware = require('../middleware/auth'); 
-// PENTING: Import authMiddleware harus langsung seperti di atas
 
 // ==========================================
-// 1. GET USER CART (GET /api/carts)
+// 1. GET USER CART
 // ==========================================
 router.get('/', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.userId;
 
-        // Cari Cart milik user
         let cart = await Cart.findOne({
             where: { user_id: userId },
             include: [
@@ -27,10 +25,9 @@ router.get('/', authMiddleware, async (req, res) => {
             ]
         });
 
-        // Jika belum punya cart, buatkan satu (kosong)
         if (!cart) {
             cart = await Cart.create({ user_id: userId });
-            cart.CartItems = []; // Set array kosong biar gak error di frontend
+            cart.CartItems = [];
         }
 
         res.json(cart);
@@ -41,20 +38,19 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 2. ADD ITEM TO CART (POST /api/carts/items)
+// 2. ADD ITEM TO CART
 // ==========================================
 router.post('/items', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { product_id, quantity } = req.body;
+        // HANYA AMBIL product_id DAN quantity. JANGAN AMBIL delivery_option LAGI.
+        const { product_id, quantity } = req.body; 
 
-        // 1. Pastikan Cart Ada
         let cart = await Cart.findOne({ where: { user_id: userId } });
         if (!cart) {
             cart = await Cart.create({ user_id: userId });
         }
 
-        // 2. Cek apakah produk sudah ada di cart ini?
         const existingItem = await CartItem.findOne({
             where: {
                 cart_id: cart.cart_id,
@@ -63,11 +59,10 @@ router.post('/items', authMiddleware, async (req, res) => {
         });
 
         if (existingItem) {
-            // Update Quantity
             existingItem.quantity += parseInt(quantity);
             await existingItem.save();
         } else {
-            // Tambah Item Baru
+            // Create baru TANPA delivery_option
             await CartItem.create({
                 cart_id: cart.cart_id,
                 product_id: product_id,
@@ -84,19 +79,16 @@ router.post('/items', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 3. UPDATE ITEM QUANTITY (PUT /api/carts/items/:itemId)
+// 3. UPDATE QUANTITY
 // ==========================================
 router.put('/items/:itemId', authMiddleware, async (req, res) => {
     try {
         const { quantity } = req.body;
         const cartItem = await CartItem.findByPk(req.params.itemId);
 
-        if (!cartItem) {
-            return res.status(404).json({ error: 'Item tidak ditemukan.' });
-        }
+        if (!cartItem) return res.status(404).json({ error: 'Item tidak ditemukan.' });
 
         if (quantity < 1) {
-            // Jika qty 0, hapus saja
             await cartItem.destroy();
         } else {
             cartItem.quantity = quantity;
@@ -104,33 +96,28 @@ router.put('/items/:itemId', authMiddleware, async (req, res) => {
         }
 
         res.json({ message: 'Keranjang diupdate.' });
-
     } catch (err) {
         res.status(500).json({ error: 'Gagal update keranjang.' });
     }
 });
 
 // ==========================================
-// 4. REMOVE ITEM (DELETE /api/carts/items/:itemId)
+// 4. REMOVE ITEM
 // ==========================================
 router.delete('/items/:itemId', authMiddleware, async (req, res) => {
     try {
         const cartItem = await CartItem.findByPk(req.params.itemId);
-        
-        if (!cartItem) {
-            return res.status(404).json({ error: 'Item tidak ditemukan.' });
-        }
+        if (!cartItem) return res.status(404).json({ error: 'Item tidak ditemukan.' });
 
         await cartItem.destroy();
         res.json({ message: 'Item dihapus dari keranjang.' });
-
     } catch (err) {
         res.status(500).json({ error: 'Gagal menghapus item.' });
     }
 });
 
 // ==========================================
-// 5. CLEAR CART (DELETE /api/carts)
+// 5. CLEAR CART
 // ==========================================
 router.delete('/', authMiddleware, async (req, res) => {
     try {
