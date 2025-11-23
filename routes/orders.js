@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { Order, OrderItem, Cart, CartItem, Product } = require('../models');
-const authMiddleware = require('../middleware/auth');
-const upload = require('../middleware/upload'); // Middleware upload gambar
+const authMiddleware = require('../middleware/auth'); 
+// PENTING: Jangan ada require upload di sini karena sudah tidak dipakai
 
 // CHECKOUT (POST /api/orders/checkout)
-// CHECKOUT (VERSI SIMPLE: TANPA UPLOAD BUKTI)
-// Kita hapus middleware 'upload.single', jadi API menerima JSON biasa.
 router.post('/checkout', authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.userId;
+    // ^^^ Perhatikan baris ini. Hanya ada 3 argumen: Path, Auth, Handler.
+    // Kalau ada 'upload' atau 'undefined' di tengah-tengah, dia akan error.
 
-        // 1. Ambil data JSON dari Body
+    try {
+        const userId = req.user.userId; // Didapat dari authMiddleware
+
         const {
             recipient_name, recipient_phone, sender_phone,
             address_line, province, postal_code,
@@ -19,7 +19,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
             delivery_type 
         } = req.body;
 
-        // 2. Ambil Keranjang User
+        // 1. Ambil Keranjang User
         const cart = await Cart.findOne({
             where: { user_id: userId },
             include: [{ model: CartItem, include: [Product] }]
@@ -29,7 +29,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Keranjang kosong" });
         }
 
-        // 3. Hitung Total
+        // 2. Hitung Total
         let itemsTotal = 0;
         cart.CartItems.forEach(item => {
             itemsTotal += parseFloat(item.Product.price) * item.quantity;
@@ -39,7 +39,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
         const handlingFee = 1000;
         const finalTotal = itemsTotal + deliveryFee + handlingFee;
 
-        // 4. Buat Order Baru (Tanpa Proof of Payment)
+        // 3. Buat Order Baru
         const newOrder = await Order.create({
             user_id: userId,
             recipient_name,
@@ -55,13 +55,13 @@ router.post('/checkout', authMiddleware, async (req, res) => {
             total_price: finalTotal,
             delivery_fee: deliveryFee,
             handling_fee: handlingFee,
-            proof_of_payment: null, // Kita set NULL karena tidak ada upload
+            proof_of_payment: null, // Tidak ada upload
             status: 'DIPROSES',
-            payment_status: 'Paid', // ANGGAP LANGSUNG LUNAS SAAT KLIK PAY NOW
+            payment_status: 'Paid', // Anggap lunas karena QRIS
             payment_method: 'QRIS'
         });
 
-        // 5. Pindahkan Item Keranjang
+        // 4. Pindahkan Item Keranjang ke OrderItems
         const orderItemsArray = cart.CartItems.map(item => ({
             order_id: newOrder.order_id,
             product_id: item.product_id,
@@ -71,7 +71,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
         }));
         await OrderItem.bulkCreate(orderItemsArray);
 
-        // 6. Hapus Keranjang
+        // 5. Hapus Keranjang
         await CartItem.destroy({ where: { cart_id: cart.cart_id } });
 
         res.status(201).json({ message: "Order berhasil dibuat!", order_id: newOrder.order_id });
