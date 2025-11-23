@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path'); // <--- INI YANG TADI HILANG
+const path = require('path');
+const fs = require('fs');
+const os = require('os'); // Tambahkan OS untuk path Vercel
 const dotenv = require('dotenv');
 const { sequelize } = require('./models');
 
@@ -15,8 +17,16 @@ app.use(cors());
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 
-// Folder uploads agar bisa diakses publik (Penting untuk gambar)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// --- KONFIGURASI FOLDER UPLOADS (PENTING UNTUK VERCEL) ---
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+    // Di Vercel, arahkan endpoint /uploads ke folder sementara (/tmp)
+    app.use('/uploads', express.static(os.tmpdir()));
+} else {
+    // Di Laptop, arahkan endpoint /uploads ke folder project biasa
+    app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+}
 
 // Import Routes
 const authRoutes = require('./routes/auth');
@@ -40,16 +50,22 @@ app.use('/api/admin', adminRoutes);
 
 // Root Endpoint
 app.get('/', (req, res) => {
-    res.send('Welcome to Fairy Garden API!');
+    res.send('Fairy Garden API is Running!');
 });
 
-// Start Server
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
-    try {
-        await sequelize.authenticate();
-        console.log('✅ Database Connected to PostgreSQL');
-    } catch (error) {
-        console.error('❌ Database Connection Error:', error);
-    }
-});
+// Koneksi Database (Ditaruh di luar app.listen agar aman di Vercel)
+sequelize.authenticate()
+    .then(() => console.log('✅ Database Connected to PostgreSQL'))
+    .catch(err => console.error('❌ Database Connection Error:', err));
+
+// --- LOGIKA START SERVER (VERCEL vs LOCAL) ---
+// Jika file dijalankan langsung (node server.js), nyalakan port.
+// Jika diimport oleh Vercel, jangan nyalakan port (Vercel yang handle).
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+
+// Export app untuk Vercel
+module.exports = app;
