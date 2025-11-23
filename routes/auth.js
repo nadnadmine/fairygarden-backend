@@ -169,4 +169,33 @@ router.put('/profile', authMiddleware, async (req, res) => {
     }
 });
 
+
+// ==========================================
+// 6. EMERGENCY: BUAT ADMIN OTOMATIS (GET /api/auth/seed-admin)
+// ==========================================
+router.get('/seed-admin', async (req, res) => {
+    try {
+        // 1. Cek apakah admin sudah ada? Hapus dulu biar bersih
+        await User.destroy({ where: { email: 'admin@fairygarden.com' } });
+
+        // 2. Hash Password 'admin123'
+        const hashedPassword = await bcrypt.hash('admin123', 10);
+
+        // 3. Buat User Admin Baru
+        const newAdmin = await User.create({
+            first_name: 'Super',
+            last_name: 'Admin',
+            email: 'admin@fairygarden.com',
+            phone: '081234567899',
+            password_hash: hashedPassword,
+            role: 'admin' // PENTING: Role Admin
+        });
+
+        res.json({ message: "AKUN ADMIN BERHASIL DIBUAT!", user: newAdmin });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Gagal membuat admin: " + err.message });
+    }
+});
+
 module.exports = router;
