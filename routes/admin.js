@@ -82,4 +82,31 @@ router.put('/orders/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// ==========================================
+// 5. DELETE CUSTOMER (ADMIN ONLY) - FITUR BARU!
+// ==========================================
+router.delete('/users/:id', authMiddleware, async (req, res) => {
+    try {
+        // Cek Admin
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Akses ditolak" });
+
+        const user = await User.findByPk(req.params.id);
+        
+        if (!user) {
+            return res.status(404).json({ error: "User tidak ditemukan" });
+        }
+
+        // SAFETY: Jangan biarkan Admin menghapus sesama Admin lewat menu ini
+        if (user.role === 'admin') {
+            return res.status(400).json({ error: "Tidak bisa menghapus sesama Admin!" });
+        }
+
+        await user.destroy();
+        res.json({ message: "User berhasil dihapus." });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Gagal menghapus user." });
+    }
+});
+
 module.exports = router;
