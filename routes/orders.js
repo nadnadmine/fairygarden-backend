@@ -5,20 +5,19 @@ const authMiddleware = require('../middleware/auth');
 const upload = require('../middleware/upload'); // Middleware upload gambar
 
 // CHECKOUT (POST /api/orders/checkout)
-router.post('/checkout', authMiddleware, upload.single('proofOfPayment'), async (req, res) => {
+// CHECKOUT (VERSI SIMPLE: TANPA UPLOAD BUKTI)
+// Kita hapus middleware 'upload.single', jadi API menerima JSON biasa.
+router.post('/checkout', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const file = req.file;
 
-        // 1. Ambil data dari Body (Dikirim oleh Front-End)
+        // 1. Ambil data JSON dari Body
         const {
             recipient_name, recipient_phone, sender_phone,
             address_line, province, postal_code,
             delivery_date, delivery_time, message_card,
-            delivery_type // 'Delivery' atau 'Pick Up'
+            delivery_type 
         } = req.body;
-
-        if (!file) return res.status(400).json({ error: "Wajib upload bukti transfer!" });
 
         // 2. Ambil Keranjang User
         const cart = await Cart.findOne({
@@ -40,7 +39,7 @@ router.post('/checkout', authMiddleware, upload.single('proofOfPayment'), async 
         const handlingFee = 1000;
         const finalTotal = itemsTotal + deliveryFee + handlingFee;
 
-        // 4. Buat Order Baru (Sesuai Desain PDF)
+        // 4. Buat Order Baru (Tanpa Proof of Payment)
         const newOrder = await Order.create({
             user_id: userId,
             recipient_name,
@@ -50,18 +49,19 @@ router.post('/checkout', authMiddleware, upload.single('proofOfPayment'), async 
             province: province || "DKI Jakarta",
             postal_code: postal_code || "00000",
             delivery_type: delivery_type || 'Delivery',
-            delivery_date: delivery_date || new Date(), // Default hari ini jika kosong
+            delivery_date: delivery_date || new Date(), 
             delivery_time: delivery_time || "09:00 - 15:00",
             message_card: message_card || "-",
             total_price: finalTotal,
             delivery_fee: deliveryFee,
             handling_fee: handlingFee,
-            proof_of_payment: file.filename, // Simpan nama file
+            proof_of_payment: null, // Kita set NULL karena tidak ada upload
             status: 'DIPROSES',
-            payment_status: 'Paid' // Karena sudah upload bukti
+            payment_status: 'Paid', // ANGGAP LANGSUNG LUNAS SAAT KLIK PAY NOW
+            payment_method: 'QRIS'
         });
 
-        // 5. Pindahkan Item Keranjang ke OrderItems
+        // 5. Pindahkan Item Keranjang
         const orderItemsArray = cart.CartItems.map(item => ({
             order_id: newOrder.order_id,
             product_id: item.product_id,
@@ -71,7 +71,7 @@ router.post('/checkout', authMiddleware, upload.single('proofOfPayment'), async 
         }));
         await OrderItem.bulkCreate(orderItemsArray);
 
-        // 6. Kosongkan Keranjang
+        // 6. Hapus Keranjang
         await CartItem.destroy({ where: { cart_id: cart.cart_id } });
 
         res.status(201).json({ message: "Order berhasil dibuat!", order_id: newOrder.order_id });
