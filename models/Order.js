@@ -12,17 +12,17 @@ module.exports = (sequelize, DataTypes) => {
     // --- DATA PENERIMA ---
     recipient_name: { type: DataTypes.STRING, allowNull: false },
     recipient_phone: { type: DataTypes.STRING, allowNull: false },
-    sender_phone: { type: DataTypes.STRING }, // Opsional (No HP Pengirim)
+    sender_phone: { type: DataTypes.STRING }, 
     
-    // --- DATA ALAMAT (Langsung di Order, tidak pakai tabel terpisah) ---
+    // --- DATA ALAMAT ---
     address_line: { type: DataTypes.TEXT, allowNull: false },
     province: { type: DataTypes.STRING },
     postal_code: { type: DataTypes.STRING },
     
-    // --- DATA PENGIRIMAN ---
-    delivery_type: { type: DataTypes.STRING, defaultValue: 'Delivery' }, // Delivery / Pick Up
+    // --- PENGIRIMAN ---
+    delivery_type: { type: DataTypes.STRING, defaultValue: 'Delivery' },
     delivery_date: { type: DataTypes.DATEONLY }, // YYYY-MM-DD
-    delivery_time: { type: DataTypes.STRING },   // 09:00 - 12:00
+    delivery_time: { type: DataTypes.STRING },
     
     // --- PESAN ---
     message_card: { type: DataTypes.TEXT },
@@ -36,10 +36,10 @@ module.exports = (sequelize, DataTypes) => {
     status: { type: DataTypes.STRING, defaultValue: 'DIPROSES' },
     payment_status: { type: DataTypes.STRING, defaultValue: 'Pending' },
     payment_method: { type: DataTypes.STRING, defaultValue: 'QRIS' },
-    proof_of_payment: { type: DataTypes.TEXT } // URL Gambar
+    proof_of_payment: { type: DataTypes.TEXT }
   }, {
     tableName: 'orders',
-    timestamps: true,
+    timestamps: true, // created_at, updated_at
     underscored: true
   });
 
