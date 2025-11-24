@@ -10,12 +10,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ==========================================
-// 1. CONFIGURASI CORS (YANG SUDAH DIPERBAIKI)
+// 1. CONFIGURASI CORS (VERSI FINAL & STABIL)
 // ==========================================
-// Kita pakai fungsi dinamis untuk mengizinkan Front-End kamu
+// Daftar website yang boleh mengakses API ini
 const allowedOrigins = [
-    'https://fairygarden-frontend.vercel.app', // Alamat Front-End Kamu
-    'http://localhost:5500',                   // Buat testing di laptop (Live Server)
+    'https://fairygarden-frontend.vercel.app', // Domain Front-End Kamu
+    'http://localhost:5500',                   // Localhost (Live Server)
     'http://127.0.0.1:5500'
 ];
 
@@ -24,21 +24,22 @@ app.use(cors({
         // Izinkan request tanpa origin (seperti dari Postman atau server-to-server)
         if (!origin) return callback(null, true);
         
+        // Cek apakah origin ada di daftar putih
         if (allowedOrigins.indexOf(origin) === -1) {
-            // Jika asal request tidak ada di daftar putih, kita izinkan saja (Mode Santai)
-            // Supaya tidak pusing debug saat development.
-            // Nanti kalau sudah production serius, ini bisa diperketat.
+            // Jika tidak ada, kita izinkan saja (Mode Development/Santai)
+            // Agar tidak pusing kena blokir saat testing
             return callback(null, true); 
         }
         return callback(null, true);
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // OPTIONS sudah dihandle disini
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    credentials: false // KITA MATIKAN DULU (Karena kita pakai Token Bearer, bukan Cookies)
+    credentials: false // Matikan credentials karena kita pakai Token Bearer (Header)
 }));
 
-// Handle Preflight Requests
-app.options('*', cors());
+// ❌ SAYA MENGHAPUS BARIS DI BAWAH INI KARENA BIKIN CRASH:
+// app.options('*', cors()); 
+// (Fungsi app.use(cors) di atas sudah otomatis menangani preflight check)
 
 // ==========================================
 // 2. MIDDLEWARE LAINNYA
