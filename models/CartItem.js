@@ -1,5 +1,3 @@
-const { DataTypes } = require('sequelize');
-
 module.exports = (sequelize, DataTypes) => {
   const CartItem = sequelize.define('CartItem', {
     cart_item_id: {
@@ -19,7 +17,8 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       defaultValue: 1
     }
-    // DULU ADA delivery_option DI SINI, SEKARANG SUDAH DIHAPUS.
+    // SUDAH DIHAPUS: delivery_option, delivery_date, message_card
+    // Karena data ini sekarang hanya diminta saat CHECKOUT (per pesanan), bukan per item.
   }, {
     tableName: 'cart_items',
     timestamps: true,
