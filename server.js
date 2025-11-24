@@ -10,36 +10,26 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ==========================================
-// 1. CONFIGURASI CORS (VERSI FINAL & STABIL)
+// 1. CONFIGURASI CORS (VERSI AMAN & FINAL)
 // ==========================================
-// Daftar website yang boleh mengakses API ini
 const allowedOrigins = [
     'https://fairygarden-frontend.vercel.app', // Domain Front-End Kamu
-    'http://localhost:5500',                   // Localhost (Live Server)
+    'http://localhost:5500',                   // Localhost
     'http://127.0.0.1:5500'
 ];
 
 app.use(cors({
     origin: function (origin, callback) {
-        // Izinkan request tanpa origin (seperti dari Postman atau server-to-server)
         if (!origin) return callback(null, true);
-        
-        // Cek apakah origin ada di daftar putih
         if (allowedOrigins.indexOf(origin) === -1) {
-            // Jika tidak ada, kita izinkan saja (Mode Development/Santai)
-            // Agar tidak pusing kena blokir saat testing
             return callback(null, true); 
         }
         return callback(null, true);
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // OPTIONS sudah dihandle disini
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    credentials: false // Matikan credentials karena kita pakai Token Bearer (Header)
+    credentials: false 
 }));
-
-// ❌ SAYA MENGHAPUS BARIS DI BAWAH INI KARENA BIKIN CRASH:
-// app.options('*', cors()); 
-// (Fungsi app.use(cors) di atas sudah otomatis menangani preflight check)
 
 // ==========================================
 // 2. MIDDLEWARE LAINNYA
@@ -84,14 +74,20 @@ app.use((err, req, res, next) => {
 });
 
 // ==========================================
-// 5. START SERVER
+// 5. START SERVER (VERSI VERCEL COMPATIBLE)
 // ==========================================
-sequelize.sync({ alter: false }) 
-    .then(() => {
-        app.listen(PORT, () => {
-            console.log(`Server is running on port ${PORT} 🚀`);
-        });
-    })
-    .catch(err => {
-        console.error('Database connection failed:', err);
+
+// A. Sinkronisasi Database (Jalan di background)
+sequelize.sync({ alter: false })
+    .then(() => console.log('Database Connected & Synced! 🐘'))
+    .catch(err => console.error('Database Connection Failed:', err));
+
+// B. Local Development (Hanya jalan di laptop, Vercel skip ini)
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT} 🚀`);
     });
+}
+
+// C. EXPORT APP (INI YANG DICARI VERCEL!)
+module.exports = app;
